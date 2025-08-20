@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WherU PTT Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-weight: 600;
+        }
+        .connected { background: #d4edda; color: #155724; }
+        .disconnected { background: #f8d7da; color: #721c24; }
+        .waiting { background: #fff3cd; color: #856404; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        
+        .connection-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+        }
+        
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #dee2e6;
+            border-radius: 6px;
+            font-size: 16px;
+            margin: 10px 0;
+        }
+        
+        button {
+            background: #4facfe;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+            transition: all 0.2s;
+        }
+        
+        button:hover {
+            background: #3b82f6;
+            transform: translateY(-1px);
+        }
+        
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .ptt-button {
+            width: 100%;
+            height: 80px;
+            font-size: 20px;
+            font-weight: bold;
+            background: #28a745;
+            margin: 20px 0;
+        }
+        
+        .ptt-button:active,
+        .ptt-button.transmitting {
+            background: #dc3545;
+            transform: scale(0.98);
+        }
+        
+        .ptt-button.transmitting {
+            animation: pulse-red 0.8s ease-in-out infinite;
+        }
+        
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+        }
+        
+        .volume-indicator {
+            width: 100%;
+            height: 20px;
+            background: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        
+        .volume-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #28a745, #ffc107, #dc3545);
+            width: 0%;
+            transition: width 0.1s;
+        }
+        
+        .peer-id {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 14px;
+            word-break: break-all;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>WherU Push-to-Talk Test</h1>
+        
+        <div id="status" class="status disconnected">
+            Initializing PeerJS connection...
+        </div>
+        
+        <div class="connection-section">
+            <h3>Your ID</h3>
+            <div id="my-peer-id" class="peer-id">Generating...</div>
+            <button onclick="copyPeerID()">Copy ID</button>
+        </div>
+        
+        <div class="connection-section">
+            <h3>Connect to Friend</h3>
+            <input type="text" id="friend-id" placeholder="Enter friend's ID">
+            <button onclick="connectToFriend()">Connect</button>
+        </div>
+        
+        <div class="connection-section">
+            <h3>Push-to-Talk</h3>
+            <button id="ptt-button" class="ptt-button" disabled>
+                Hold to Talk
+            </button>
+            <div class="volume-indicator">
+                <div id="volume-bar" class="volume-bar"></div>
+            </div>
+            <div id="audio-status" class="info">
+                Microphone not active
+            </div>
+        </div>
+        
+        <div class="connection-section">
+            <h3>Debug Info</h3>
+            <div id="debug-log" style="font-family: monospace; font-size: 12px; max-height: 200px; overflow-y: auto;"></div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/peerjs@1.5.0/dist/peerjs.min.js"></script>
+    <script>
+        let peer = null;
+        let connection = null;
+        let localStream = null;
+        let isTransmitting = false;
+        let audioContext = null;
+        let analyser = null;
+        let microphone = null;
+        
+        const statusDiv = document.getElementById('status');
+        const myPeerIdDiv = document.getElementById('my-peer-id');
+        const friendIdInput = document.getElementById('friend-id');
+        const pttButton = document.getElementById('ptt-button');
+        const volumeBar = document.getElementById('volume-bar');
+        const audioStatus = document.getElementById('audio-status');
+        const debugLog = document.getElementById('debug-log');
+        
+        function log(message) {
+            console.log(message);
+            const timestamp = new Date().toLocaleTimeString();
+            debugLog.innerHTML += `[${timestamp}] ${message}<br>`;
+            debugLog.scrollTop = debugLog.scrollHeight;
+        }
+        
+        function updateStatus(message, className) {
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${className}`;
+            log(`Status: ${message}`);
+        }
+        
+        // Initialize PeerJS
+        function initializePeer() {
+            // Generate a simple readable ID
+            const adjectives = ['quick', 'bright', 'swift', 'smart', 'cool', 'fast', 'blue', 'red'];
+            const nouns = ['fox', 'cat', 'dog', 'bird', 'fish', 'lion', 'wolf', 'bear'];
+            const randomId = adjectives[Math.floor(Math.random() * adjectives.length)] + 
+                           nouns[Math.floor(Math.random() * nouns.length)] + 
+                           Math.floor(Math.random() * 100);
+            
+            peer = new Peer(randomId, {
+                debug: 2,
+                config: {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                }
+            });
+            
+            peer.on('open', (id) => {
+                myPeerIdDiv.textContent = id;
+                updateStatus('Ready to connect! Share your ID with a friend.', 'waiting');
+            });
+            
+            peer.on('connection', (conn) => {
+                log(`Incoming connection from: ${conn.peer}`);
+                handleConnection(conn);
+            });
+            
+            peer.on('call', (call) => {
+                log(`Incoming call from: ${call.peer}`);
+                // Auto-answer calls (for PTT, we want instant connection)
+                setupMicrophone().then(() => {
+                    call.answer(localStream);
+                    setupCallHandlers(call);
+                });
+            });
+            
+            peer.on('error', (error) => {
+                log(`Peer error: ${error.message}`);
+                updateStatus(`Error: ${error.message}`, 'disconnected');
+            });
+        }
+        
+        function handleConnection(conn) {
+            connection = conn;
+            
+            conn.on('open', () => {
+                updateStatus(`Connected to ${conn.peer}`, 'connected');
+                pttButton.disabled = false;
+            });
+            
+            conn.on('data', (data) => {
+                if (data.type === 'ptt-start') {
+                    audioStatus.textContent = `${conn.peer} is transmitting...`;
+                } else if (data.type === 'ptt-stop') {
+                    audioStatus.textContent = 'Microphone not active';
+                }
+            });
+            
+            conn.on('close', () => {
+                updateStatus('Connection closed', 'disconnected');
+                pttButton.disabled = true;
+                connection = null;
+            });
+        }
+        
+        function connectToFriend() {
+            const friendId = friendIdInput.value.trim();
+            if (!friendId) {
+                alert('Please enter a friend ID');
+                return;
+            }
+            
+            log(`Connecting to: ${friendId}`);
+            const conn = peer.connect(friendId);
+            handleConnection(conn);
+        }
+        
+        async function setupMicrophone() {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        sampleRate: 44100
+                    }
+                });
+                
+                // Setup audio visualization
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                microphone = audioContext.createMediaStreamSource(localStream);
+                microphone.connect(analyser);
+                
+                analyser.fftSize = 256;
+                startVolumeMonitoring();
+                
+                log('Microphone setup successful');
+                return localStream;
+            } catch (error) {
+                log(`Microphone error: ${error.message}`);
+                alert('Microphone access required for PTT functionality');
+                throw error;
+            }
+        }
+        
+        function startVolumeMonitoring() {
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            
+            function updateVolume() {
+                analyser.getByteFrequencyData(dataArray);
+                const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+                const volume = Math.min(100, (average / 128) * 100);
+                
+                if (isTransmitting) {
+                    volumeBar.style.width = volume + '%';
+                } else {
+                    volumeBar.style.width = '0%';
+                }
+                
+                requestAnimationFrame(updateVolume);
+            }
+            updateVolume();
+        }
+        
+        function setupCallHandlers(call) {
+            call.on('stream', (remoteStream) => {
+                log('Received remote audio stream');
+                const audio = new Audio();
+                audio.srcObject = remoteStream;
+                audio.play();
+            });
+            
+            call.on('close', () => {
+                log('Call ended');
+            });
+        }
+        
+        async function startTransmission() {
+            if (isTransmitting || !connection) return;
+            
+            try {
+                if (!localStream) {
+                    await setupMicrophone();
+                }
+                
+                // Resume audio context if suspended
+                if (audioContext.state === 'suspended') {
+                    await audioContext.resume();
+                }
+                
+                isTransmitting = true;
+                pttButton.classList.add('transmitting');
+                pttButton.textContent = 'TRANSMITTING...';
+                audioStatus.textContent = 'You are transmitting';
+                
+                // Notify the other peer
+                connection.send({ type: 'ptt-start' });
+                
+                // Make the call
+                const call = peer.call(connection.peer, localStream);
+                setupCallHandlers(call);
+                
+                log('Started transmission');
+                
+            } catch (error) {
+                log(`Transmission error: ${error.message}`);
+                stopTransmission();
+            }
+        }
+        
+        function stopTransmission() {
+            if (!isTransmitting) return;
+            
+            isTransmitting = false;
+            pttButton.classList.remove('transmitting');
+            pttButton.textContent = 'Hold to Talk';
+            audioStatus.textContent = 'Microphone not active';
+            
+            if (connection) {
+                connection.send({ type: 'ptt-stop' });
+            }
+            
+            log('Stopped transmission');
+        }
+        
+        // PTT Button Event Handlers
+        pttButton.addEventListener('mousedown', startTransmission);
+        pttButton.addEventListener('mouseup', stopTransmission);
+        pttButton.addEventListener('mouseleave', stopTransmission);
+        
+        // Touch events for mobile
+        pttButton.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            startTransmission();
+        });
+        pttButton.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            stopTransmission();
+        });
+        
+        // Prevent context menu
+        pttButton.addEventListener('contextmenu', (e) => e.preventDefault());
+        
+        function copyPeerID() {
+            const peerID = myPeerIdDiv.textContent;
+            navigator.clipboard.writeText(peerID).then(() => {
+                alert('Peer ID copied to clipboard!');
+            });
+        }
+        
+        // Initialize on page load
+        window.addEventListener('load', initializePeer);
+        
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+            if (peer) {
+                peer.destroy();
+            }
+        });
+    </script>
+</body>
+</html>
