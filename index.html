@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>WherU PTT Test</title>
     <style>
         body {
@@ -12,6 +15,32 @@
             padding: 20px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
+            /* Force portrait orientation */
+            -webkit-transform: rotate(0deg);
+            -moz-transform: rotate(0deg);
+            transform: rotate(0deg);
+        }
+        
+        /* Lock orientation CSS */
+        @media screen and (orientation: landscape) and (max-width: 768px) {
+            body {
+                transform: rotate(90deg);
+                transform-origin: center center;
+                width: 100vh;
+                height: 100vw;
+                overflow-x: hidden;
+                position: absolute;
+                top: 100vw;
+                left: 0;
+                margin-top: -100vw;
+            }
+        }
+        
+        /* Prevent rotation on mobile */
+        html {
+            -webkit-text-size-adjust: 100%;
+            -ms-text-size-adjust: 100%;
+            touch-action: manipulation;
         }
         .container {
             background: white;
@@ -335,9 +364,13 @@
             if (isTransmitting || !connection) return;
             
             try {
-                if (!localStream) {
-                    await setupMicrophone();
+                // Always get fresh stream for each transmission
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                    localStream = null;
                 }
+                
+                await setupMicrophone();
                 
                 // Resume audio context if suspended
                 if (audioContext.state === 'suspended') {
@@ -352,11 +385,19 @@
                 // Notify the other peer
                 connection.send({ type: 'ptt-start' });
                 
-                // Make the call
+                // Make the call with fresh stream
                 const call = peer.call(connection.peer, localStream);
                 setupCallHandlers(call);
                 
-                log('Started transmission');
+                // Auto-stop after 30 seconds as safety measure
+                setTimeout(() => {
+                    if (isTransmitting) {
+                        log('Auto-stopping transmission after 30 seconds');
+                        stopTransmission();
+                    }
+                }, 30000);
+                
+                log('Started transmission with fresh stream');
                 
             } catch (error) {
                 log(`Transmission error: ${error.message}`);
@@ -372,26 +413,75 @@
             pttButton.textContent = 'Hold to Talk';
             audioStatus.textContent = 'Microphone not active';
             
+            // Force stop all audio tracks
+            if (localStream) {
+                localStream.getTracks().forEach(track => {
+                    track.stop();
+                    log(`Stopped track: ${track.kind} - ${track.readyState}`);
+                });
+                localStream = null;
+            }
+            
+            // Close audio context
+            if (microphone) {
+                microphone.disconnect();
+                microphone = null;
+            }
+            
+            if (audioContext && audioContext.state !== 'closed') {
+                audioContext.suspend();
+            }
+            
             if (connection) {
                 connection.send({ type: 'ptt-stop' });
             }
             
-            log('Stopped transmission');
+            log('Stopped transmission - all tracks disabled');
         }
         
-        // PTT Button Event Handlers
+        // PTT Button Event Handlers with Samsung fixes
+        let touchTimeout = null;
+        
         pttButton.addEventListener('mousedown', startTransmission);
         pttButton.addEventListener('mouseup', stopTransmission);
         pttButton.addEventListener('mouseleave', stopTransmission);
         
-        // Touch events for mobile
+        // Enhanced touch events for Samsung devices
         pttButton.addEventListener('touchstart', (e) => {
             e.preventDefault();
+            e.stopPropagation();
+            
+            // Clear any existing timeout
+            if (touchTimeout) {
+                clearTimeout(touchTimeout);
+                touchTimeout = null;
+            }
+            
             startTransmission();
         });
+        
         pttButton.addEventListener('touchend', (e) => {
             e.preventDefault();
+            e.stopPropagation();
+            
+            // Delay stop to prevent accidental quick releases
+            touchTimeout = setTimeout(() => {
+                stopTransmission();
+                touchTimeout = null;
+            }, 100);
+        });
+        
+        pttButton.addEventListener('touchcancel', (e) => {
+            e.preventDefault();
             stopTransmission();
+        });
+        
+        // Force stop on visibility change (Samsung optimization)
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden && isTransmitting) {
+                log('Page hidden - force stopping transmission');
+                stopTransmission();
+            }
         });
         
         // Prevent context menu
@@ -405,7 +495,44 @@
         }
         
         // Initialize on page load
-        window.addEventListener('load', initializePeer);
+        window.addEventListener('load', () => {
+            initializePeer();
+            lockOrientation();
+        });
+        
+        // Lock orientation function
+        function lockOrientation() {
+            try {
+                // Modern browsers
+                if (screen.orientation && screen.orientation.lock) {
+                    screen.orientation.lock('portrait').catch(err => {
+                        log('Orientation lock failed: ' + err.message);
+                    });
+                }
+                // Legacy browsers
+                else if (screen.lockOrientation) {
+                    screen.lockOrientation('portrait');
+                }
+                else if (screen.mozLockOrientation) {
+                    screen.mozLockOrientation('portrait');
+                }
+                else if (screen.msLockOrientation) {
+                    screen.msLockOrientation('portrait');
+                }
+                
+                log('Portrait orientation lock attempted');
+            } catch (error) {
+                log('Orientation lock not supported: ' + error.message);
+            }
+        }
+        
+        // Handle orientation changes
+        window.addEventListener('orientationchange', () => {
+            setTimeout(() => {
+                lockOrientation();
+                log('Orientation changed - re-locking to portrait');
+            }, 100);
+        });
         
         // Cleanup on page unload
         window.addEventListener('beforeunload', () => {
