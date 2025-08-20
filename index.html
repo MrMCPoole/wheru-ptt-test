@@ -241,7 +241,16 @@
             
             peer.on('open', (id) => {
                 myPeerIdDiv.textContent = id;
-                updateStatus('Ready to connect! Share your ID with a friend.', 'waiting');
+                updateStatus(`Ready on ${getBrowserName()}! Share your ID with a friend.`, 'waiting');
+                
+                // Browser-specific warnings
+                if (browserInfo.isFirefox) {
+                    log('Firefox detected - using enhanced cleanup for PTT');
+                } else if (browserInfo.isSafari) {
+                    log('Safari detected - WebRTC support may be limited');
+                } else if (browserInfo.isChrome) {
+                    log('Chrome detected - optimal PTT performance expected');
+                }
             });
             
             peer.on('connection', (conn) => {
@@ -348,15 +357,32 @@
         }
         
         function setupCallHandlers(call) {
+            // Track active calls for Firefox cleanup
+            activeCalls.push(call);
+            
             call.on('stream', (remoteStream) => {
                 log('Received remote audio stream');
                 const audio = new Audio();
                 audio.srcObject = remoteStream;
-                audio.play();
+                audio.play().catch(e => log(`Audio play error: ${e.message}`));
             });
             
             call.on('close', () => {
                 log('Call ended');
+                // Remove from active calls
+                const index = activeCalls.indexOf(call);
+                if (index > -1) {
+                    activeCalls.splice(index, 1);
+                }
+            });
+            
+            call.on('error', (error) => {
+                log(`Call error: ${error.message}`);
+                // Remove from active calls on error
+                const index = activeCalls.indexOf(call);
+                if (index > -1) {
+                    activeCalls.splice(index, 1);
+                }
             });
         }
         
@@ -364,15 +390,35 @@
             if (isTransmitting || !connection) return;
             
             try {
-                // Always get fresh stream for each transmission
-                if (localStream) {
-                    localStream.getTracks().forEach(track => track.stop());
-                    localStream = null;
+                // Browser-specific pre-transmission cleanup
+                if (browserInfo.isFirefox) {
+                    // Firefox: Complete cleanup before starting
+                    if (localStream) {
+                        localStream.getTracks().forEach(track => track.stop());
+                        localStream = null;
+                    }
+                    
+                    if (audioContext) {
+                        try {
+                            audioContext.close();
+                        } catch (e) {
+                            log(`Error closing previous audio context: ${e.message}`);
+                        }
+                        audioContext = null;
+                        analyser = null;
+                        microphone = null;
+                    }
+                } else {
+                    // Chrome: Light cleanup
+                    if (localStream) {
+                        localStream.getTracks().forEach(track => track.stop());
+                        localStream = null;
+                    }
                 }
                 
                 await setupMicrophone();
                 
-                // Resume audio context if suspended
+                // Ensure audio context is running
                 if (audioContext.state === 'suspended') {
                     await audioContext.resume();
                 }
@@ -397,13 +443,15 @@
                     }
                 }, 30000);
                 
-                log('Started transmission with fresh stream');
+                log(`${getBrowserName()} - Started transmission`);
                 
             } catch (error) {
                 log(`Transmission error: ${error.message}`);
                 stopTransmission();
             }
         }
+        
+        let activeCalls = [];
         
         function stopTransmission() {
             if (!isTransmitting) return;
@@ -413,30 +461,69 @@
             pttButton.textContent = 'Hold to Talk';
             audioStatus.textContent = 'Microphone not active';
             
-            // Force stop all audio tracks
-            if (localStream) {
-                localStream.getTracks().forEach(track => {
-                    track.stop();
-                    log(`Stopped track: ${track.kind} - ${track.readyState}`);
+            // Browser-specific cleanup strategies
+            if (browserInfo.isFirefox) {
+                // Firefox: Aggressive cleanup required
+                activeCalls.forEach(call => {
+                    try {
+                        call.close();
+                    } catch (e) {
+                        log(`Error closing call: ${e.message}`);
+                    }
                 });
-                localStream = null;
-            }
-            
-            // Close audio context
-            if (microphone) {
-                microphone.disconnect();
-                microphone = null;
-            }
-            
-            if (audioContext && audioContext.state !== 'closed') {
-                audioContext.suspend();
+                activeCalls = [];
+                
+                // Firefox: Force stop all tracks
+                if (localStream) {
+                    localStream.getTracks().forEach(track => {
+                        track.stop();
+                        log(`Firefox - Stopped track: ${track.kind}`);
+                    });
+                    localStream = null;
+                }
+                
+                // Firefox: Close audio context completely
+                if (audioContext) {
+                    try {
+                        audioContext.close();
+                    } catch (e) {
+                        log(`Error closing audio context: ${e.message}`);
+                    }
+                    audioContext = null;
+                    analyser = null;
+                    microphone = null;
+                }
+                
+            } else {
+                // Chrome/Other browsers: Standard cleanup
+                if (localStream) {
+                    localStream.getTracks().forEach(track => {
+                        track.stop();
+                        log(`${getBrowserName()} - Stopped track: ${track.kind}`);
+                    });
+                    localStream = null;
+                }
+                
+                // Chrome: Suspend audio context (less aggressive)
+                if (microphone) {
+                    try {
+                        microphone.disconnect();
+                    } catch (e) {
+                        log(`Error disconnecting microphone: ${e.message}`);
+                    }
+                    microphone = null;
+                }
+                
+                if (audioContext && audioContext.state !== 'closed') {
+                    audioContext.suspend();
+                }
             }
             
             if (connection) {
                 connection.send({ type: 'ptt-stop' });
             }
             
-            log('Stopped transmission - all tracks disabled');
+            log(`${getBrowserName()} - Transmission stopped`);
         }
         
         // PTT Button Event Handlers with Samsung fixes
