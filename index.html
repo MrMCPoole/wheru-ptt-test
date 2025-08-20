@@ -6,19 +6,14 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>WherU PTT Test</title>
+    <title>WherU - PTT Ready</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
-            max-width: 600px;
-            margin: 0 auto;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
             padding: 20px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            /* Force portrait orientation */
-            -webkit-transform: rotate(0deg);
-            -moz-transform: rotate(0deg);
-            transform: rotate(0deg);
         }
         
         /* Lock orientation CSS */
@@ -36,34 +31,48 @@
             }
         }
         
-        /* Prevent rotation on mobile */
-        html {
-            -webkit-text-size-adjust: 100%;
-            -ms-text-size-adjust: 100%;
-            touch-action: manipulation;
-        }
         .container {
+            max-width: 400px;
+            margin: 0 auto;
             background: white;
             border-radius: 16px;
-            padding: 30px;
+            padding: 20px;
             box-shadow: 0 20px 40px rgba(0,0,0,0.1);
         }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
         .status {
-            padding: 15px;
+            padding: 12px;
             border-radius: 8px;
             margin: 10px 0;
             font-weight: 600;
+            text-align: center;
         }
         .connected { background: #d4edda; color: #155724; }
         .disconnected { background: #f8d7da; color: #721c24; }
         .waiting { background: #fff3cd; color: #856404; }
-        .info { background: #d1ecf1; color: #0c5460; }
         
         .connection-section {
             margin: 20px 0;
-            padding: 20px;
+            padding: 15px;
             border: 2px solid #e9ecef;
             border-radius: 8px;
+        }
+        
+        .peer-id {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 16px;
+            font-weight: bold;
+            text-align: center;
+            margin: 10px 0;
+            color: #495057;
         }
         
         input[type="text"] {
@@ -73,17 +82,20 @@
             border-radius: 6px;
             font-size: 16px;
             margin: 10px 0;
+            box-sizing: border-box;
         }
         
         button {
             background: #4facfe;
             color: white;
             border: none;
-            padding: 12px 24px;
+            padding: 12px 20px;
             border-radius: 6px;
             cursor: pointer;
             font-size: 16px;
-            margin: 5px;
+            font-weight: 600;
+            width: 100%;
+            margin: 5px 0;
             transition: all 0.2s;
         }
         
@@ -99,12 +111,12 @@
         }
         
         .ptt-button {
-            width: 100%;
             height: 80px;
-            font-size: 20px;
+            font-size: 18px;
             font-weight: bold;
             background: #28a745;
             margin: 20px 0;
+            user-select: none;
         }
         
         .ptt-button:active,
@@ -139,29 +151,44 @@
             transition: width 0.1s;
         }
         
-        .peer-id {
+        .audio-status {
+            text-align: center;
+            padding: 8px;
             background: #f8f9fa;
-            padding: 10px;
-            border-radius: 4px;
-            font-family: monospace;
-            font-size: 14px;
-            word-break: break-all;
+            border-radius: 6px;
+            font-weight: 600;
+            color: #495057;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 10px;
             margin: 10px 0;
+        }
+        
+        .action-buttons button {
+            flex: 1;
+            padding: 8px;
+            font-size: 14px;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>WherU Push-to-Talk Test</h1>
-        
-        <div id="status" class="status disconnected">
-            Initializing PeerJS connection...
+        <div class="header">
+            <h1>WherU Push-to-Talk</h1>
+            <div id="status" class="status disconnected">
+                Initializing...
+            </div>
         </div>
         
         <div class="connection-section">
             <h3>Your ID</h3>
             <div id="my-peer-id" class="peer-id">Generating...</div>
-            <button onclick="copyPeerID()">Copy ID</button>
+            <div class="action-buttons">
+                <button onclick="copyPeerID()">Copy ID</button>
+                <button onclick="generateNewID()">New ID</button>
+            </div>
         </div>
         
         <div class="connection-section">
@@ -178,14 +205,9 @@
             <div class="volume-indicator">
                 <div id="volume-bar" class="volume-bar"></div>
             </div>
-            <div id="audio-status" class="info">
-                Microphone not active
+            <div id="audio-status" class="audio-status">
+                Connect to a friend to enable PTT
             </div>
-        </div>
-        
-        <div class="connection-section">
-            <h3>Debug Info</h3>
-            <div id="debug-log" style="font-family: monospace; font-size: 12px; max-height: 200px; overflow-y: auto;"></div>
         </div>
     </div>
 
@@ -205,32 +227,29 @@
         const pttButton = document.getElementById('ptt-button');
         const volumeBar = document.getElementById('volume-bar');
         const audioStatus = document.getElementById('audio-status');
-        const debugLog = document.getElementById('debug-log');
-        
-        function log(message) {
-            console.log(message);
-            const timestamp = new Date().toLocaleTimeString();
-            debugLog.innerHTML += `[${timestamp}] ${message}<br>`;
-            debugLog.scrollTop = debugLog.scrollHeight;
-        }
         
         function updateStatus(message, className) {
             statusDiv.textContent = message;
             statusDiv.className = `status ${className}`;
-            log(`Status: ${message}`);
+            console.log(`Status: ${message}`);
         }
         
-        // Initialize PeerJS
+        function generateNewID() {
+            if (peer) {
+                peer.destroy();
+            }
+            setTimeout(initializePeer, 500);
+        }
+        
         function initializePeer() {
-            // Generate a simple readable ID
-            const adjectives = ['quick', 'bright', 'swift', 'smart', 'cool', 'fast', 'blue', 'red'];
-            const nouns = ['fox', 'cat', 'dog', 'bird', 'fish', 'lion', 'wolf', 'bear'];
+            const adjectives = ['quick', 'bright', 'swift', 'smart', 'cool', 'fast', 'blue', 'red', 'green', 'gold'];
+            const nouns = ['fox', 'cat', 'dog', 'bird', 'fish', 'lion', 'wolf', 'bear', 'duck', 'hawk'];
             const randomId = adjectives[Math.floor(Math.random() * adjectives.length)] + 
                            nouns[Math.floor(Math.random() * nouns.length)] + 
                            Math.floor(Math.random() * 100);
             
             peer = new Peer(randomId, {
-                debug: 2,
+                debug: 1,
                 config: {
                     iceServers: [
                         { urls: 'stun:stun.l.google.com:19302' },
@@ -241,34 +260,26 @@
             
             peer.on('open', (id) => {
                 myPeerIdDiv.textContent = id;
-                updateStatus(`Ready on ${getBrowserName()}! Share your ID with a friend.`, 'waiting');
-                
-                // Browser-specific warnings
-                if (browserInfo.isFirefox) {
-                    log('Firefox detected - using enhanced cleanup for PTT');
-                } else if (browserInfo.isSafari) {
-                    log('Safari detected - WebRTC support may be limited');
-                } else if (browserInfo.isChrome) {
-                    log('Chrome detected - optimal PTT performance expected');
-                }
+                updateStatus('Ready! Share your ID with a friend.', 'waiting');
             });
             
             peer.on('connection', (conn) => {
-                log(`Incoming connection from: ${conn.peer}`);
+                console.log(`Incoming connection from: ${conn.peer}`);
                 handleConnection(conn);
             });
             
             peer.on('call', (call) => {
-                log(`Incoming call from: ${call.peer}`);
-                // Auto-answer calls (for PTT, we want instant connection)
+                console.log(`Incoming call from: ${call.peer}`);
                 setupMicrophone().then(() => {
                     call.answer(localStream);
                     setupCallHandlers(call);
+                }).catch(err => {
+                    console.error('Failed to answer call:', err);
                 });
             });
             
             peer.on('error', (error) => {
-                log(`Peer error: ${error.message}`);
+                console.error('Peer error:', error);
                 updateStatus(`Error: ${error.message}`, 'disconnected');
             });
         }
@@ -279,19 +290,21 @@
             conn.on('open', () => {
                 updateStatus(`Connected to ${conn.peer}`, 'connected');
                 pttButton.disabled = false;
+                audioStatus.textContent = 'PTT ready - hold button to talk';
             });
             
             conn.on('data', (data) => {
                 if (data.type === 'ptt-start') {
                     audioStatus.textContent = `${conn.peer} is transmitting...`;
                 } else if (data.type === 'ptt-stop') {
-                    audioStatus.textContent = 'Microphone not active';
+                    audioStatus.textContent = 'PTT ready - hold button to talk';
                 }
             });
             
             conn.on('close', () => {
                 updateStatus('Connection closed', 'disconnected');
                 pttButton.disabled = true;
+                audioStatus.textContent = 'Connect to a friend to enable PTT';
                 connection = null;
             });
         }
@@ -303,7 +316,7 @@
                 return;
             }
             
-            log(`Connecting to: ${friendId}`);
+            console.log(`Connecting to: ${friendId}`);
             const conn = peer.connect(friendId);
             handleConnection(conn);
         }
@@ -319,7 +332,6 @@
                     }
                 });
                 
-                // Setup audio visualization
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 analyser = audioContext.createAnalyser();
                 microphone = audioContext.createMediaStreamSource(localStream);
@@ -328,10 +340,10 @@
                 analyser.fftSize = 256;
                 startVolumeMonitoring();
                 
-                log('Microphone setup successful');
+                console.log('Microphone setup successful');
                 return localStream;
             } catch (error) {
-                log(`Microphone error: ${error.message}`);
+                console.error('Microphone error:', error);
                 alert('Microphone access required for PTT functionality');
                 throw error;
             }
@@ -341,11 +353,10 @@
             const dataArray = new Uint8Array(analyser.frequencyBinCount);
             
             function updateVolume() {
-                analyser.getByteFrequencyData(dataArray);
-                const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
-                const volume = Math.min(100, (average / 128) * 100);
-                
-                if (isTransmitting) {
+                if (analyser && isTransmitting) {
+                    analyser.getByteFrequencyData(dataArray);
+                    const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+                    const volume = Math.min(100, (average / 128) * 100);
                     volumeBar.style.width = volume + '%';
                 } else {
                     volumeBar.style.width = '0%';
@@ -357,32 +368,15 @@
         }
         
         function setupCallHandlers(call) {
-            // Track active calls for Firefox cleanup
-            activeCalls.push(call);
-            
             call.on('stream', (remoteStream) => {
-                log('Received remote audio stream');
+                console.log('Received remote audio stream');
                 const audio = new Audio();
                 audio.srcObject = remoteStream;
-                audio.play().catch(e => log(`Audio play error: ${e.message}`));
+                audio.play().catch(e => console.error('Audio play error:', e));
             });
             
             call.on('close', () => {
-                log('Call ended');
-                // Remove from active calls
-                const index = activeCalls.indexOf(call);
-                if (index > -1) {
-                    activeCalls.splice(index, 1);
-                }
-            });
-            
-            call.on('error', (error) => {
-                log(`Call error: ${error.message}`);
-                // Remove from active calls on error
-                const index = activeCalls.indexOf(call);
-                if (index > -1) {
-                    activeCalls.splice(index, 1);
-                }
+                console.log('Call ended');
             });
         }
         
@@ -390,35 +384,10 @@
             if (isTransmitting || !connection) return;
             
             try {
-                // Browser-specific pre-transmission cleanup
-                if (browserInfo.isFirefox) {
-                    // Firefox: Complete cleanup before starting
-                    if (localStream) {
-                        localStream.getTracks().forEach(track => track.stop());
-                        localStream = null;
-                    }
-                    
-                    if (audioContext) {
-                        try {
-                            audioContext.close();
-                        } catch (e) {
-                            log(`Error closing previous audio context: ${e.message}`);
-                        }
-                        audioContext = null;
-                        analyser = null;
-                        microphone = null;
-                    }
-                } else {
-                    // Chrome: Light cleanup
-                    if (localStream) {
-                        localStream.getTracks().forEach(track => track.stop());
-                        localStream = null;
-                    }
+                if (!localStream) {
+                    await setupMicrophone();
                 }
                 
-                await setupMicrophone();
-                
-                // Ensure audio context is running
                 if (audioContext.state === 'suspended') {
                     await audioContext.resume();
                 }
@@ -428,30 +397,26 @@
                 pttButton.textContent = 'TRANSMITTING...';
                 audioStatus.textContent = 'You are transmitting';
                 
-                // Notify the other peer
                 connection.send({ type: 'ptt-start' });
                 
-                // Make the call with fresh stream
                 const call = peer.call(connection.peer, localStream);
                 setupCallHandlers(call);
                 
-                // Auto-stop after 30 seconds as safety measure
+                // Safety timeout
                 setTimeout(() => {
                     if (isTransmitting) {
-                        log('Auto-stopping transmission after 30 seconds');
+                        console.log('Auto-stopping transmission after 30 seconds');
                         stopTransmission();
                     }
                 }, 30000);
                 
-                log(`${getBrowserName()} - Started transmission`);
+                console.log('Started transmission');
                 
             } catch (error) {
-                log(`Transmission error: ${error.message}`);
+                console.error('Transmission error:', error);
                 stopTransmission();
             }
         }
-        
-        let activeCalls = [];
         
         function stopTransmission() {
             if (!isTransmitting) return;
@@ -459,119 +424,30 @@
             isTransmitting = false;
             pttButton.classList.remove('transmitting');
             pttButton.textContent = 'Hold to Talk';
-            audioStatus.textContent = 'Microphone not active';
-            
-            // Browser-specific cleanup strategies
-            if (browserInfo.isFirefox) {
-                // Firefox: Aggressive cleanup required
-                activeCalls.forEach(call => {
-                    try {
-                        call.close();
-                    } catch (e) {
-                        log(`Error closing call: ${e.message}`);
-                    }
-                });
-                activeCalls = [];
-                
-                // Firefox: Force stop all tracks
-                if (localStream) {
-                    localStream.getTracks().forEach(track => {
-                        track.stop();
-                        log(`Firefox - Stopped track: ${track.kind}`);
-                    });
-                    localStream = null;
-                }
-                
-                // Firefox: Close audio context completely
-                if (audioContext) {
-                    try {
-                        audioContext.close();
-                    } catch (e) {
-                        log(`Error closing audio context: ${e.message}`);
-                    }
-                    audioContext = null;
-                    analyser = null;
-                    microphone = null;
-                }
-                
-            } else {
-                // Chrome/Other browsers: Standard cleanup
-                if (localStream) {
-                    localStream.getTracks().forEach(track => {
-                        track.stop();
-                        log(`${getBrowserName()} - Stopped track: ${track.kind}`);
-                    });
-                    localStream = null;
-                }
-                
-                // Chrome: Suspend audio context (less aggressive)
-                if (microphone) {
-                    try {
-                        microphone.disconnect();
-                    } catch (e) {
-                        log(`Error disconnecting microphone: ${e.message}`);
-                    }
-                    microphone = null;
-                }
-                
-                if (audioContext && audioContext.state !== 'closed') {
-                    audioContext.suspend();
-                }
-            }
+            audioStatus.textContent = 'PTT ready - hold button to talk';
             
             if (connection) {
                 connection.send({ type: 'ptt-stop' });
             }
             
-            log(`${getBrowserName()} - Transmission stopped`);
+            console.log('Stopped transmission');
         }
         
-        // PTT Button Event Handlers with Samsung fixes
-        let touchTimeout = null;
-        
+        // PTT Button Events
         pttButton.addEventListener('mousedown', startTransmission);
         pttButton.addEventListener('mouseup', stopTransmission);
         pttButton.addEventListener('mouseleave', stopTransmission);
         
-        // Enhanced touch events for Samsung devices
+        // Touch events for mobile
         pttButton.addEventListener('touchstart', (e) => {
             e.preventDefault();
-            e.stopPropagation();
-            
-            // Clear any existing timeout
-            if (touchTimeout) {
-                clearTimeout(touchTimeout);
-                touchTimeout = null;
-            }
-            
             startTransmission();
         });
-        
         pttButton.addEventListener('touchend', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            // Delay stop to prevent accidental quick releases
-            touchTimeout = setTimeout(() => {
-                stopTransmission();
-                touchTimeout = null;
-            }, 100);
-        });
-        
-        pttButton.addEventListener('touchcancel', (e) => {
             e.preventDefault();
             stopTransmission();
         });
-        
-        // Force stop on visibility change (Samsung optimization)
-        document.addEventListener('visibilitychange', () => {
-            if (document.hidden && isTransmitting) {
-                log('Page hidden - force stopping transmission');
-                stopTransmission();
-            }
-        });
-        
-        // Prevent context menu
+        pttButton.addEventListener('touchcancel', stopTransmission);
         pttButton.addEventListener('contextmenu', (e) => e.preventDefault());
         
         function copyPeerID() {
@@ -581,47 +457,24 @@
             });
         }
         
-        // Initialize on page load
+        // Orientation lock
+        function lockOrientation() {
+            if (screen.orientation && screen.orientation.lock) {
+                screen.orientation.lock('portrait').catch(() => {});
+            }
+        }
+        
+        window.addEventListener('orientationchange', () => {
+            setTimeout(lockOrientation, 100);
+        });
+        
+        // Initialize
         window.addEventListener('load', () => {
             initializePeer();
             lockOrientation();
         });
         
-        // Lock orientation function
-        function lockOrientation() {
-            try {
-                // Modern browsers
-                if (screen.orientation && screen.orientation.lock) {
-                    screen.orientation.lock('portrait').catch(err => {
-                        log('Orientation lock failed: ' + err.message);
-                    });
-                }
-                // Legacy browsers
-                else if (screen.lockOrientation) {
-                    screen.lockOrientation('portrait');
-                }
-                else if (screen.mozLockOrientation) {
-                    screen.mozLockOrientation('portrait');
-                }
-                else if (screen.msLockOrientation) {
-                    screen.msLockOrientation('portrait');
-                }
-                
-                log('Portrait orientation lock attempted');
-            } catch (error) {
-                log('Orientation lock not supported: ' + error.message);
-            }
-        }
-        
-        // Handle orientation changes
-        window.addEventListener('orientationchange', () => {
-            setTimeout(() => {
-                lockOrientation();
-                log('Orientation changed - re-locking to portrait');
-            }, 100);
-        });
-        
-        // Cleanup on page unload
+        // Cleanup
         window.addEventListener('beforeunload', () => {
             if (localStream) {
                 localStream.getTracks().forEach(track => track.stop());
