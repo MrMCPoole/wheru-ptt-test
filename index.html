@@ -1,7 +1,4 @@
-        function disconnect() {
-            console.log('Initiating disconnect...');
-            
-            <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -10,6 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>WherU?</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -64,6 +62,68 @@
             padding: 15px;
             border: 2px solid #e9ecef;
             border-radius: 8px;
+        }
+        
+        .map-container {
+            height: 300px;
+            border-radius: 8px;
+            overflow: hidden;
+            margin: 10px 0;
+            border: 2px solid #dee2e6;
+        }
+        
+        .control-buttons {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        
+        .ptt-button {
+            flex: 0 0 80%;
+            height: 60px;
+            font-size: 16px;
+            font-weight: bold;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.2s;
+        }
+        
+        .ptt-button:active,
+        .ptt-button.transmitting {
+            background: #dc3545;
+            transform: scale(0.98);
+        }
+        
+        .ptt-button.transmitting {
+            animation: pulse-red 0.8s ease-in-out infinite;
+        }
+        
+        .disconnect-button {
+            flex: 0 0 20%;
+            height: 60px;
+            font-size: 14px;
+            font-weight: bold;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .disconnect-button:hover {
+            background: #c82333;
+            transform: translateY(-1px);
+        }
+        
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
         }
         
         .peer-id {
@@ -166,31 +226,6 @@
             transform: none;
         }
         
-        .ptt-button {
-            height: 80px;
-            font-size: 18px;
-            font-weight: bold;
-            background: #28a745;
-            margin: 20px 0;
-            user-select: none;
-        }
-        
-        .ptt-button:active,
-        .ptt-button.transmitting {
-            background: #dc3545;
-            transform: scale(0.98);
-        }
-        
-        .ptt-button.transmitting {
-            animation: pulse-red 0.8s ease-in-out infinite;
-        }
-        
-        @keyframes pulse-red {
-            0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
-            70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
-        }
-        
         .audio-status {
             text-align: center;
             padding: 8px;
@@ -198,82 +233,6 @@
             border-radius: 6px;
             font-weight: 600;
             color: #495057;
-        }
-        
-        .action-buttons {
-            display: flex;
-            gap: 10px;
-            margin: 10px 0;
-        }
-        
-        .action-buttons button {
-            flex: 1;
-            padding: 8px;
-            font-size: 14px;
-        }
-        
-        .map-container {
-            height: 400px;
-            border-radius: 8px;
-            overflow: hidden;
-            margin: 10px 0;
-            border: 2px solid #dee2e6;
-        }
-        
-        .map-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.5);
-            display: none;
-            z-index: 1000;
-        }
-        
-        .map-view {
-            position: fixed;
-            top: 50px;
-            left: 20px;
-            right: 20px;
-            bottom: 50px;
-            background: white;
-            border-radius: 16px;
-            display: none;
-            z-index: 1001;
-            flex-direction: column;
-        }
-        
-        .map-header {
-            padding: 20px;
-            border-bottom: 1px solid #dee2e6;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .map-content {
-            flex: 1;
-            position: relative;
-        }
-        
-        .map-controls {
-            padding: 20px;
-            border-top: 1px solid #dee2e6;
-            display: flex;
-            gap: 10px;
-        }
-        
-        .map-controls button {
-            flex: 1;
-            margin: 0;
-        }
-        
-        .close-map {
-            background: #6c757d;
-            padding: 8px 16px;
-            font-size: 14px;
-            width: auto;
         }
     </style>
 </head>
@@ -332,11 +291,9 @@
         </div>
     </div>
 
-    <!-- Remove old map overlay sections -->
-
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script src="https://unpkg.com/peerjs@1.5.0/dist/peerjs.min.js"></script>
+    <script>
         let peer = null;
         let connection = null;
         let localStream = null;
@@ -372,7 +329,7 @@
             } else if (cleaned.length === 10) {
                 return `+1 (${cleaned.slice(0,3)}) ${cleaned.slice(3,6)}-${cleaned.slice(6)}`;
             }
-            return phone; // Return as-is if not standard US format
+            return phone;
         }
         
         function phoneToId(phone) {
@@ -413,7 +370,6 @@
             myNumberDisplay.style.display = 'block';
             myPhoneInput.style.display = 'none';
             
-            // Initialize peer with phone-based ID
             const peerId = phoneToId(myPhoneNumber);
             initializePeerWithId(peerId);
             
@@ -432,7 +388,6 @@
             const formattedPhone = formatPhoneNumber(phone);
             const friendId = phoneToId(formattedPhone);
             
-            // Check if friend already exists
             if (friends.find(f => f.id === friendId)) {
                 alert('This friend is already added');
                 return;
@@ -453,7 +408,7 @@
         
         function renderFriendsList() {
             if (friends.length === 0) {
-                friendsList.innerHTML = '<div class="empty-friends">No friends added yet</div>';
+                friendsList.innerHTML = '<div class="empty-friends">No contacts added yet</div>';
                 return;
             }
             
@@ -472,83 +427,11 @@
         }
         
         function deleteFriend(friendId) {
-            if (confirm('Remove this friend?')) {
+            if (confirm('Remove this contact?')) {
                 friends = friends.filter(f => f.id !== friendId);
                 renderFriendsList();
                 saveToStorage();
             }
-        }
-        
-        function disconnect() {
-            console.log('Initiating disconnect...');
-            
-            // Stop any active transmission first
-            if (isTransmitting) {
-                stopTransmission();
-            }
-            
-            // Close the active call
-            if (activeCall) {
-                try {
-                    activeCall.close();
-                    console.log('Active call closed');
-                } catch (error) {
-                    console.error('Error closing call:', error);
-                }
-                activeCall = null;
-            }
-            
-            // Close the data connection
-            if (connection) {
-                try {
-                    connection.send({ type: 'disconnect' });
-                    connection.close();
-                    console.log('Data connection closed');
-                } catch (error) {
-                    console.error('Error closing connection:', error);
-                }
-                connection = null;
-            }
-            
-            // Clean up audio resources
-            if (localStream) {
-                localStream.getTracks().forEach(track => {
-                    track.stop();
-                    console.log('Stopped audio track');
-                });
-                localStream = null;
-            }
-            
-            // Clean up audio context
-            if (microphone) {
-                try {
-                    microphone.disconnect();
-                } catch (error) {
-                    console.error('Error disconnecting microphone:', error);
-                }
-                microphone = null;
-            }
-            
-            if (audioContext && audioContext.state !== 'closed') {
-                try {
-                    audioContext.suspend();
-                } catch (error) {
-                    console.error('Error suspending audio context:', error);
-                }
-            }
-            
-            // Close map view
-            closeMap();
-            
-            // Reset UI
-            pttButton.disabled = true;
-            audioStatus.textContent = 'Connect to a friend to enable PTT';
-            updateStatus(`Ready! Your number: ${myPhoneNumber}`, 'waiting');
-            
-            // Reset location data
-            friendLocation = null;
-            
-            console.log('Disconnect complete');
         }
         
         function updateStatus(message, className) {
@@ -583,7 +466,6 @@
                 if (friend) {
                     handleConnection(conn, friend.name);
                 } else {
-                    // Unknown caller
                     const unknownPhone = conn.peer.replace(/(\d{3})(\d{3})(\d{4})/, '+1 ($1) $2-$3');
                     if (confirm(`Incoming call from ${unknownPhone}. Accept?`)) {
                         handleConnection(conn, unknownPhone);
@@ -621,10 +503,8 @@
                 pttButton.disabled = false;
                 audioStatus.textContent = 'PTT ready - hold button to talk';
                 
-                // Show map when connected
                 showMap(friendName);
                 
-                // Share my location
                 if (myLocation) {
                     conn.send({ 
                         type: 'location', 
@@ -699,7 +579,6 @@
                     },
                     (error) => {
                         console.error('Location error:', error);
-                        // Default to San Francisco for demo
                         resolve({ lat: 37.7749, lng: -122.4194 });
                     }
                 );
@@ -709,7 +588,6 @@
         function updateMapMarkers() {
             if (!map) return;
             
-            // Remove existing markers
             if (myMarker) {
                 map.removeLayer(myMarker);
             }
@@ -717,7 +595,6 @@
                 map.removeLayer(friendMarker);
             }
             
-            // Add my location marker
             if (myLocation) {
                 myMarker = L.marker([myLocation.lat, myLocation.lng])
                     .addTo(map)
@@ -730,7 +607,6 @@
                     }));
             }
             
-            // Add friend location marker
             if (friendLocation) {
                 friendMarker = L.marker([friendLocation.lat, friendLocation.lng])
                     .addTo(map)
@@ -743,7 +619,6 @@
                     }));
             }
             
-            // Fit map to show both markers
             if (myLocation && friendLocation) {
                 const group = L.featureGroup([myMarker, friendMarker]);
                 map.fitBounds(group.getBounds().pad(0.1));
@@ -753,7 +628,6 @@
         }
         
         async function showMap(friendName) {
-            // Get current location
             try {
                 myLocation = await getCurrentLocation();
                 console.log('My location:', myLocation);
@@ -761,11 +635,9 @@
                 console.error('Failed to get location:', error);
             }
             
-            // Show map and controls
             mapSection.style.display = 'block';
             controlsSection.style.display = 'block';
             
-            // Initialize map
             setTimeout(() => {
                 initializeMap();
                 updateMapMarkers();
@@ -799,7 +671,6 @@
                 microphone.connect(analyser);
                 
                 analyser.fftSize = 256;
-                startVolumeMonitoring();
                 
                 console.log('Microphone setup successful');
                 return localStream;
@@ -808,24 +679,6 @@
                 alert('Microphone access required for PTT functionality');
                 throw error;
             }
-        }
-        
-        function startVolumeMonitoring() {
-            const dataArray = new Uint8Array(analyser.frequencyBinCount);
-            
-            function updateVolume() {
-                if (analyser && isTransmitting) {
-                    analyser.getByteFrequencyData(dataArray);
-                    const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
-                    const volume = Math.min(100, (average / 128) * 100);
-                    volumeBar.style.width = volume + '%';
-                } else {
-                    volumeBar.style.width = '0%';
-                }
-                
-                requestAnimationFrame(updateVolume);
-            }
-            updateVolume();
         }
         
         function setupCallHandlers(call) {
@@ -871,7 +724,6 @@
                 const call = peer.call(connection.peer, localStream);
                 setupCallHandlers(call);
                 
-                // Safety timeout
                 setTimeout(() => {
                     if (isTransmitting) {
                         console.log('Auto-stopping transmission after 30 seconds');
@@ -902,12 +754,75 @@
             console.log('Stopped transmission');
         }
         
+        function disconnect() {
+            console.log('Initiating disconnect...');
+            
+            if (isTransmitting) {
+                stopTransmission();
+            }
+            
+            if (activeCall) {
+                try {
+                    activeCall.close();
+                    console.log('Active call closed');
+                } catch (error) {
+                    console.error('Error closing call:', error);
+                }
+                activeCall = null;
+            }
+            
+            if (connection) {
+                try {
+                    connection.send({ type: 'disconnect' });
+                    connection.close();
+                    console.log('Data connection closed');
+                } catch (error) {
+                    console.error('Error closing connection:', error);
+                }
+                connection = null;
+            }
+            
+            if (localStream) {
+                localStream.getTracks().forEach(track => {
+                    track.stop();
+                    console.log('Stopped audio track');
+                });
+                localStream = null;
+            }
+            
+            if (microphone) {
+                try {
+                    microphone.disconnect();
+                } catch (error) {
+                    console.error('Error disconnecting microphone:', error);
+                }
+                microphone = null;
+            }
+            
+            if (audioContext && audioContext.state !== 'closed') {
+                try {
+                    audioContext.suspend();
+                } catch (error) {
+                    console.error('Error suspending audio context:', error);
+                }
+            }
+            
+            closeMap();
+            
+            pttButton.disabled = true;
+            audioStatus.textContent = 'Connect to a friend to enable PTT';
+            updateStatus(`Ready! Your number: ${myPhoneNumber}`, 'waiting');
+            
+            friendLocation = null;
+            
+            console.log('Disconnect complete');
+        }
+        
         // PTT Button Events
         pttButton.addEventListener('mousedown', startTransmission);
         pttButton.addEventListener('mouseup', stopTransmission);
         pttButton.addEventListener('mouseleave', stopTransmission);
         
-        // Touch events for mobile
         pttButton.addEventListener('touchstart', (e) => {
             e.preventDefault();
             startTransmission();
@@ -919,14 +834,6 @@
         pttButton.addEventListener('touchcancel', stopTransmission);
         pttButton.addEventListener('contextmenu', (e) => e.preventDefault());
         
-        function copyPeerID() {
-            const peerID = myPeerIdDiv.textContent;
-            navigator.clipboard.writeText(peerID).then(() => {
-                alert('Peer ID copied to clipboard!');
-            });
-        }
-        
-        // Orientation lock
         function lockOrientation() {
             if (screen.orientation && screen.orientation.lock) {
                 screen.orientation.lock('portrait').catch(() => {});
@@ -937,7 +844,6 @@
             setTimeout(lockOrientation, 100);
         });
         
-        // Initialize
         window.addEventListener('load', () => {
             loadFromStorage();
             lockOrientation();
@@ -945,7 +851,6 @@
             updateStatus('Enter your phone number to get started', 'waiting');
         });
         
-        // Cleanup
         window.addEventListener('beforeunload', () => {
             if (localStream) {
                 localStream.getTracks().forEach(track => track.stop());
