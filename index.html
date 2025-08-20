@@ -285,6 +285,7 @@
         let microphone = null;
         let myPhoneNumber = null;
         let friends = [];
+        let activeCall = null;
         
         const statusDiv = document.getElementById('status');
         const myPhoneInput = document.getElementById('my-phone');
@@ -414,14 +415,71 @@
         }
         
         function disconnect() {
-            if (connection) {
-                connection.close();
+            console.log('Initiating disconnect...');
+            
+            // Stop any active transmission first
+            if (isTransmitting) {
+                stopTransmission();
             }
-            connection = null;
+            
+            // Close the active call
+            if (activeCall) {
+                try {
+                    activeCall.close();
+                    console.log('Active call closed');
+                } catch (error) {
+                    console.error('Error closing call:', error);
+                }
+                activeCall = null;
+            }
+            
+            // Close the data connection
+            if (connection) {
+                try {
+                    connection.send({ type: 'disconnect' });
+                    connection.close();
+                    console.log('Data connection closed');
+                } catch (error) {
+                    console.error('Error closing connection:', error);
+                }
+                connection = null;
+            }
+            
+            // Clean up audio resources
+            if (localStream) {
+                localStream.getTracks().forEach(track => {
+                    track.stop();
+                    console.log('Stopped audio track');
+                });
+                localStream = null;
+            }
+            
+            // Clean up audio context
+            if (microphone) {
+                try {
+                    microphone.disconnect();
+                } catch (error) {
+                    console.error('Error disconnecting microphone:', error);
+                }
+                microphone = null;
+            }
+            
+            if (audioContext && audioContext.state !== 'closed') {
+                try {
+                    audioContext.suspend();
+                } catch (error) {
+                    console.error('Error suspending audio context:', error);
+                }
+            }
+            
+            // Reset UI
             connectionStatus.style.display = 'none';
             pttButton.disabled = true;
             audioStatus.textContent = 'Connect to a friend to enable PTT';
-            updateStatus('Disconnected', 'disconnected');
+            volumeBar.style.width = '0%';
+            updateStatus(`Ready! Your number: ${myPhoneNumber}`, 'waiting');
+            
+            console.log('Disconnect complete');
         }
         
         function updateStatus(message, className) {
@@ -580,6 +638,8 @@
         }
         
         function setupCallHandlers(call) {
+            activeCall = call;
+            
             call.on('stream', (remoteStream) => {
                 console.log('Received remote audio stream');
                 const audio = new Audio();
@@ -589,6 +649,12 @@
             
             call.on('close', () => {
                 console.log('Call ended');
+                activeCall = null;
+            });
+            
+            call.on('error', (error) => {
+                console.error('Call error:', error);
+                activeCall = null;
             });
         }
         
