@@ -75,7 +75,7 @@
             color: #495057;
         }
         
-        input[type="text"] {
+        input[type="text"], input[type="tel"] {
             width: 100%;
             padding: 12px;
             border: 2px solid #dee2e6;
@@ -83,6 +83,59 @@
             font-size: 16px;
             margin: 10px 0;
             box-sizing: border-box;
+        }
+        
+        .friend-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            margin: 8px 0;
+            border: 1px solid #dee2e6;
+        }
+        
+        .friend-info {
+            flex: 1;
+        }
+        
+        .friend-name {
+            font-weight: 600;
+            color: #495057;
+        }
+        
+        .friend-phone {
+            font-size: 14px;
+            color: #6c757d;
+            font-family: monospace;
+        }
+        
+        .friend-actions {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .friend-actions button {
+            padding: 6px 12px;
+            font-size: 14px;
+            width: auto;
+            margin: 0;
+        }
+        
+        .connect-btn {
+            background: #28a745;
+        }
+        
+        .delete-btn {
+            background: #dc3545;
+        }
+        
+        .empty-friends {
+            text-align: center;
+            color: #6c757d;
+            font-style: italic;
+            padding: 20px;
         }
         
         button {
@@ -183,18 +236,28 @@
         </div>
         
         <div class="connection-section">
-            <h3>Your ID</h3>
-            <div id="my-peer-id" class="peer-id">Generating...</div>
-            <div class="action-buttons">
-                <button onclick="copyPeerID()">Copy ID</button>
-                <button onclick="generateNewID()">New ID</button>
-            </div>
+            <h3>Your Phone Number</h3>
+            <input type="tel" id="my-phone" placeholder="+1 555 123 4567" maxlength="15">
+            <button onclick="setMyNumber()">Set My Number</button>
+            <div id="my-number-display" class="peer-id" style="display: none;"></div>
         </div>
         
         <div class="connection-section">
-            <h3>Connect to Friend</h3>
-            <input type="text" id="friend-id" placeholder="Enter friend's ID">
-            <button onclick="connectToFriend()">Connect</button>
+            <h3>Add Friend by Phone</h3>
+            <input type="tel" id="friend-phone" placeholder="+1 555 987 6543" maxlength="15">
+            <input type="text" id="friend-name" placeholder="Friend's name">
+            <button onclick="addFriend()">Add Friend</button>
+        </div>
+        
+        <div class="connection-section">
+            <h3>My Friends</h3>
+            <div id="friends-list"></div>
+        </div>
+        
+        <div class="connection-section" id="connection-status" style="display: none;">
+            <h3>Active Connection</h3>
+            <div id="connected-friend"></div>
+            <button onclick="disconnect()" style="background: #dc3545;">Disconnect</button>
         </div>
         
         <div class="connection-section">
@@ -220,13 +283,146 @@
         let audioContext = null;
         let analyser = null;
         let microphone = null;
+        let myPhoneNumber = null;
+        let friends = [];
         
         const statusDiv = document.getElementById('status');
-        const myPeerIdDiv = document.getElementById('my-peer-id');
-        const friendIdInput = document.getElementById('friend-id');
+        const myPhoneInput = document.getElementById('my-phone');
+        const myNumberDisplay = document.getElementById('my-number-display');
+        const friendPhoneInput = document.getElementById('friend-phone');
+        const friendNameInput = document.getElementById('friend-name');
+        const friendsList = document.getElementById('friends-list');
         const pttButton = document.getElementById('ptt-button');
         const volumeBar = document.getElementById('volume-bar');
         const audioStatus = document.getElementById('audio-status');
+        const connectionStatus = document.getElementById('connection-status');
+        const connectedFriend = document.getElementById('connected-friend');
+        
+        // Phone number utilities
+        function formatPhoneNumber(phone) {
+            const cleaned = phone.replace(/\D/g, '');
+            if (cleaned.length === 11 && cleaned.startsWith('1')) {
+                return `+1 (${cleaned.slice(1,4)}) ${cleaned.slice(4,7)}-${cleaned.slice(7)}`;
+            } else if (cleaned.length === 10) {
+                return `+1 (${cleaned.slice(0,3)}) ${cleaned.slice(3,6)}-${cleaned.slice(6)}`;
+            }
+            return phone; // Return as-is if not standard US format
+        }
+        
+        function phoneToId(phone) {
+            return phone.replace(/\D/g, '');
+        }
+        
+        // Local storage functions
+        function saveToStorage() {
+            localStorage.setItem('wheru-phone', myPhoneNumber || '');
+            localStorage.setItem('wheru-friends', JSON.stringify(friends));
+        }
+        
+        function loadFromStorage() {
+            const savedPhone = localStorage.getItem('wheru-phone');
+            const savedFriends = localStorage.getItem('wheru-friends');
+            
+            if (savedPhone) {
+                myPhoneNumber = savedPhone;
+                myPhoneInput.value = savedPhone;
+                setMyNumber();
+            }
+            
+            if (savedFriends) {
+                friends = JSON.parse(savedFriends);
+                renderFriendsList();
+            }
+        }
+        
+        function setMyNumber() {
+            const phone = myPhoneInput.value.trim();
+            if (!phone) {
+                alert('Please enter a phone number');
+                return;
+            }
+            
+            myPhoneNumber = formatPhoneNumber(phone);
+            myNumberDisplay.textContent = myPhoneNumber;
+            myNumberDisplay.style.display = 'block';
+            myPhoneInput.style.display = 'none';
+            
+            // Initialize peer with phone-based ID
+            const peerId = phoneToId(myPhoneNumber);
+            initializePeerWithId(peerId);
+            
+            saveToStorage();
+        }
+        
+        function addFriend() {
+            const phone = friendPhoneInput.value.trim();
+            const name = friendNameInput.value.trim();
+            
+            if (!phone || !name) {
+                alert('Please enter both phone number and name');
+                return;
+            }
+            
+            const formattedPhone = formatPhoneNumber(phone);
+            const friendId = phoneToId(formattedPhone);
+            
+            // Check if friend already exists
+            if (friends.find(f => f.id === friendId)) {
+                alert('This friend is already added');
+                return;
+            }
+            
+            friends.push({
+                id: friendId,
+                name: name,
+                phone: formattedPhone
+            });
+            
+            friendPhoneInput.value = '';
+            friendNameInput.value = '';
+            
+            renderFriendsList();
+            saveToStorage();
+        }
+        
+        function renderFriendsList() {
+            if (friends.length === 0) {
+                friendsList.innerHTML = '<div class="empty-friends">No friends added yet</div>';
+                return;
+            }
+            
+            friendsList.innerHTML = friends.map(friend => `
+                <div class="friend-item">
+                    <div class="friend-info">
+                        <div class="friend-name">${friend.name}</div>
+                        <div class="friend-phone">${friend.phone}</div>
+                    </div>
+                    <div class="friend-actions">
+                        <button class="connect-btn" onclick="connectToFriend('${friend.id}', '${friend.name}')">Connect</button>
+                        <button class="delete-btn" onclick="deleteFriend('${friend.id}')">Delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function deleteFriend(friendId) {
+            if (confirm('Remove this friend?')) {
+                friends = friends.filter(f => f.id !== friendId);
+                renderFriendsList();
+                saveToStorage();
+            }
+        }
+        
+        function disconnect() {
+            if (connection) {
+                connection.close();
+            }
+            connection = null;
+            connectionStatus.style.display = 'none';
+            pttButton.disabled = true;
+            audioStatus.textContent = 'Connect to a friend to enable PTT';
+            updateStatus('Disconnected', 'disconnected');
+        }
         
         function updateStatus(message, className) {
             statusDiv.textContent = message;
@@ -234,21 +430,12 @@
             console.log(`Status: ${message}`);
         }
         
-        function generateNewID() {
+        function initializePeerWithId(peerId) {
             if (peer) {
                 peer.destroy();
             }
-            setTimeout(initializePeer, 500);
-        }
-        
-        function initializePeer() {
-            const adjectives = ['quick', 'bright', 'swift', 'smart', 'cool', 'fast', 'blue', 'red', 'green', 'gold'];
-            const nouns = ['fox', 'cat', 'dog', 'bird', 'fish', 'lion', 'wolf', 'bear', 'duck', 'hawk'];
-            const randomId = adjectives[Math.floor(Math.random() * adjectives.length)] + 
-                           nouns[Math.floor(Math.random() * nouns.length)] + 
-                           Math.floor(Math.random() * 100);
             
-            peer = new Peer(randomId, {
+            peer = new Peer(peerId, {
                 debug: 1,
                 config: {
                     iceServers: [
@@ -259,13 +446,24 @@
             });
             
             peer.on('open', (id) => {
-                myPeerIdDiv.textContent = id;
-                updateStatus('Ready! Share your ID with a friend.', 'waiting');
+                updateStatus(`Ready! Your number: ${myPhoneNumber}`, 'waiting');
+                console.log(`Peer initialized with ID: ${id}`);
             });
             
             peer.on('connection', (conn) => {
                 console.log(`Incoming connection from: ${conn.peer}`);
-                handleConnection(conn);
+                const friend = friends.find(f => f.id === conn.peer);
+                if (friend) {
+                    handleConnection(conn, friend.name);
+                } else {
+                    // Unknown caller
+                    const unknownPhone = conn.peer.replace(/(\d{3})(\d{3})(\d{4})/, '+1 ($1) $2-$3');
+                    if (confirm(`Incoming call from ${unknownPhone}. Accept?`)) {
+                        handleConnection(conn, unknownPhone);
+                    } else {
+                        conn.close();
+                    }
+                }
             });
             
             peer.on('call', (call) => {
@@ -280,22 +478,34 @@
             
             peer.on('error', (error) => {
                 console.error('Peer error:', error);
-                updateStatus(`Error: ${error.message}`, 'disconnected');
+                if (error.type === 'unavailable-id') {
+                    updateStatus('Phone number already in use!', 'disconnected');
+                } else {
+                    updateStatus(`Error: ${error.message}`, 'disconnected');
+                }
             });
         }
         
-        function handleConnection(conn) {
+        function handleConnection(conn, friendName) {
             connection = conn;
             
             conn.on('open', () => {
-                updateStatus(`Connected to ${conn.peer}`, 'connected');
+                updateStatus(`Connected to ${friendName}`, 'connected');
                 pttButton.disabled = false;
                 audioStatus.textContent = 'PTT ready - hold button to talk';
+                
+                connectedFriend.innerHTML = `
+                    <div style="text-align: center; padding: 10px;">
+                        <div style="font-weight: 600;">${friendName}</div>
+                        <div style="font-size: 14px; color: #6c757d;">Connected and ready</div>
+                    </div>
+                `;
+                connectionStatus.style.display = 'block';
             });
             
             conn.on('data', (data) => {
                 if (data.type === 'ptt-start') {
-                    audioStatus.textContent = `${conn.peer} is transmitting...`;
+                    audioStatus.textContent = `${friendName} is transmitting...`;
                 } else if (data.type === 'ptt-stop') {
                     audioStatus.textContent = 'PTT ready - hold button to talk';
                 }
@@ -305,20 +515,22 @@
                 updateStatus('Connection closed', 'disconnected');
                 pttButton.disabled = true;
                 audioStatus.textContent = 'Connect to a friend to enable PTT';
+                connectionStatus.style.display = 'none';
                 connection = null;
             });
         }
         
-        function connectToFriend() {
-            const friendId = friendIdInput.value.trim();
-            if (!friendId) {
-                alert('Please enter a friend ID');
+        function connectToFriend(friendId, friendName) {
+            if (!peer) {
+                alert('Please set your phone number first');
                 return;
             }
             
-            console.log(`Connecting to: ${friendId}`);
+            console.log(`Connecting to: ${friendName} (${friendId})`);
+            updateStatus(`Calling ${friendName}...`, 'waiting');
+            
             const conn = peer.connect(friendId);
-            handleConnection(conn);
+            handleConnection(conn, friendName);
         }
         
         async function setupMicrophone() {
@@ -470,8 +682,10 @@
         
         // Initialize
         window.addEventListener('load', () => {
-            initializePeer();
+            loadFromStorage();
             lockOrientation();
+            renderFriendsList();
+            updateStatus('Enter your phone number to get started', 'waiting');
         });
         
         // Cleanup
