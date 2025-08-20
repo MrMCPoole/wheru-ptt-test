@@ -8,233 +8,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>WherU?</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-        }
-        
-        /* Lock orientation CSS */
-        @media screen and (orientation: landscape) and (max-width: 768px) {
-            body {
-                transform: rotate(90deg);
-                transform-origin: center center;
-                width: 100vh;
-                height: 100vw;
-                overflow-x: hidden;
-                position: absolute;
-                top: 100vw;
-                left: 0;
-                margin-top: -100vw;
-            }
-        }
-        
-        .container {
-            max-width: 400px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 16px;
-            padding: 20px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-        }
-        
-        .header {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        
-        .status {
-            padding: 12px;
-            border-radius: 8px;
-            margin: 10px 0;
-            font-weight: 600;
-            text-align: center;
-        }
-        .connected { background: #d4edda; color: #155724; }
-        .disconnected { background: #f8d7da; color: #721c24; }
-        .waiting { background: #fff3cd; color: #856404; }
-        
-        .connection-section {
-            margin: 20px 0;
-            padding: 15px;
-            border: 2px solid #e9ecef;
-            border-radius: 8px;
-        }
-        
-        .map-container {
-            height: 300px;
-            border-radius: 8px;
-            overflow: hidden;
-            margin: 10px 0;
-            border: 2px solid #dee2e6;
-        }
-        
-        .control-buttons {
-            display: flex;
-            gap: 10px;
-            margin: 10px 0;
-        }
-        
-        .ptt-button {
-            flex: 0 0 75%;
-            height: 60px;
-            font-size: 16px;
-            font-weight: bold;
-            background: #28a745;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            user-select: none;
-            transition: all 0.2s;
-        }
-        
-        .ptt-button:active,
-        .ptt-button.transmitting {
-            background: #dc3545;
-            transform: scale(0.98);
-        }
-        
-        .ptt-button.transmitting {
-            animation: pulse-red 0.8s ease-in-out infinite;
-        }
-        
-        .disconnect-button {
-            flex: 0 0 25%;
-            height: 60px;
-            font-size: 12px;
-            font-weight: bold;
-            background: #dc3545;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        
-        .disconnect-button:hover {
-            background: #c82333;
-            transform: translateY(-1px);
-        }
-        
-        @keyframes pulse-red {
-            0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
-            70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
-        }
-        
-        .peer-id {
-            background: #f8f9fa;
-            padding: 12px;
-            border-radius: 6px;
-            font-family: monospace;
-            font-size: 16px;
-            font-weight: bold;
-            text-align: center;
-            margin: 10px 0;
-            color: #495057;
-        }
-        
-        input[type="text"], input[type="tel"] {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #dee2e6;
-            border-radius: 6px;
-            font-size: 16px;
-            margin: 10px 0;
-            box-sizing: border-box;
-        }
-        
-        .friend-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px;
-            background: #f8f9fa;
-            border-radius: 6px;
-            margin: 8px 0;
-            border: 1px solid #dee2e6;
-        }
-        
-        .friend-info {
-            flex: 1;
-        }
-        
-        .friend-name {
-            font-weight: 600;
-            color: #495057;
-        }
-        
-        .friend-phone {
-            font-size: 14px;
-            color: #6c757d;
-            font-family: monospace;
-        }
-        
-        .friend-actions {
-            display: flex;
-            gap: 8px;
-        }
-        
-        .friend-actions button {
-            padding: 6px 12px;
-            font-size: 14px;
-            width: auto;
-            margin: 0;
-        }
-        
-        .connect-btn {
-            background: #28a745;
-        }
-        
-        .delete-btn {
-            background: #dc3545;
-        }
-        
-        .empty-friends {
-            text-align: center;
-            color: #6c757d;
-            font-style: italic;
-            padding: 20px;
-        }
-        
-        button {
-            background: #4facfe;
-            color: white;
-            border: none;
-            padding: 12px 20px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: 600;
-            width: 100%;
-            margin: 5px 0;
-            transition: all 0.2s;
-        }
-        
-        button:hover {
-            background: #3b82f6;
-            transform: translateY(-1px);
-        }
-        
-        button:disabled {
-            background: #6c757d;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        .audio-status {
-            text-align: center;
-            padding: 8px;
-            background: #f8f9fa;
-            border-radius: 6px;
-            font-weight: 600;
-            color: #495057;
-        }
-    </style>
+    <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
     <div class="container">
@@ -249,6 +23,9 @@
         <!-- 2. Contact List/Map -->
         <div class="connection-section">
             <h3>Contacts</h3>
+            <button onclick="requestLocationPermission()" style="background: #17a2b8; margin-bottom: 10px;">
+                Enable Location Sharing
+            </button>
             <div id="friends-list"></div>
         </div>
         
@@ -560,6 +337,18 @@
             
             const conn = peer.connect(friendId);
             handleConnection(conn, friendName);
+        }
+        
+        function requestLocationPermission() {
+            console.log('Requesting location permission...');
+            getCurrentLocation().then(location => {
+                myLocation = location;
+                alert('Location access enabled! You can now share your location when connected.');
+                console.log('Location permission granted:', location);
+            }).catch(error => {
+                console.error('Location permission denied:', error);
+                alert('Location access required for location sharing features.');
+            });
         }
         
         function initializeMap() {
